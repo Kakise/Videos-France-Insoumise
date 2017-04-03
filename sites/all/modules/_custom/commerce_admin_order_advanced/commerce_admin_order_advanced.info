@@ -1,0 +1,13 @@
+name = Commerce Admin Order Advanced
+description = Provides an advanced interface for admin orders
+core = 7.x
+package = Commerce (contrib)
+dependencies[] = commerce
+dependencies[] = commerce_order_ui
+
+; Information added by Drupal.org packaging script on 2015-12-08
+version = "7.x-1.0"
+core = "7.x"
+project = "commerce_admin_order_advanced"
+datestamp = "1449605072"
+

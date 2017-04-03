@@ -1,0 +1,12 @@
+name = Feeds Tamper PHP plugin
+description = Feeds Tamper plugin to execute php code 
+core = 7.x
+package = Feeds
+
+dependencies[] = feeds_tamper
+; Information added by Drupal.org packaging script on 2016-01-31
+version = "7.x-1.2"
+core = "7.x"
+project = "feeds_tamper_php"
+datestamp = "1454257140"
+

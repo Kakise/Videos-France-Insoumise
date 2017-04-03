@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Feeds Entity module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function feeds_entity_install() {
+  // Set module's weight higher than field_validation's.
+  // It is important to be able to "inherit" unique callbacks provided by
+  // field validation module.
+  // @see feeds_entity_feeds_processor_targets_alter()
+  db_update('system')
+    ->fields(array(
+      'weight' => 20,
+    ))
+    ->condition('type', 'module')
+    ->condition('name', 'feeds_entity')
+    ->execute();
+}

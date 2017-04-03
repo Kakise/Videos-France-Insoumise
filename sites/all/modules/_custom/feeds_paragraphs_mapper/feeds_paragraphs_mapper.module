@@ -1,0 +1,150 @@
+<?php
+/**
+ * Implements hook_feeds_processor_targets_alter().
+ */
+function feeds_paragraphs_mapper_feeds_processor_targets($entity_type, $bundle) {
+    $targets = array();
+
+    $entity_fields = field_info_instances($entity_type, $bundle);
+
+
+    foreach($entity_fields as $field_name => $field_data) {
+        $field_info = field_info_field($field_name);
+        if ($field_info['type'] === 'paragraphs'){
+            $targets["{$field_name}:add"] = array(
+                'name' => t('!field_name (Add paragraph)', array('!field_name' => $field_data['label'])),
+                'description' => t('Add a paragraph field to %field_name', array('%field_name' => $field_data['label'])),
+                'callback' => 'feeds_paragraphs_mapper_feeds_paragraph_callback',
+                'form_callbacks' => array('feeds_paragraphs_mapper_select_paragraph_form_callback'),
+                'summary_callbacks' => array('feeds_paragraphs_mapper_summary_callback'),
+                'custom_settings' => array('bundle'=>$bundle, 'entity_type' => $entity_type),
+            );
+        }
+    }
+
+    return $targets;
+}
+
+/**
+ * Mapping callback for the "Basic paragraph for field_s_paragraph" target
+ */
+function feeds_paragraphs_mapper_feeds_paragraph_callback($source, $entity, $target, $value, $mapping) {
+    list($field_name, $action) = explode(':', $mapping['target']);
+    if ($mapping['clear_existing']) {
+        $entity->{$field_name}[$entity->language] = array();
+    }
+    if (!empty($mapping['paragraph_type'])) {
+        $new_item = entity_create('paragraphs_item', array('bundle' => $mapping['paragraph_type'], 'field_name' => $field_name));
+        $new_item->setHostEntity('node', $entity, $entity->language);
+
+        if (!empty($value[0]) && !empty($mapping['field_name'])) {
+            // TODO - set format if needed
+            // TODO - cardinality check
+            $new_item->{$mapping['field_name']}[$entity->language][] = array(
+                'value' => $value[0],
+            );
+        }
+    }
+}
+
+
+/**
+ * @return array
+ *   The per mapping configuration form. Once the form is saved, $mapping will
+ *   be populated with the form values.
+ *
+ * @see my_module_summary_callback()
+ */
+function feeds_paragraphs_mapper_select_paragraph_form_callback(array $mapping, $target, array $form, array $form_state) {
+    // TODO - better field selection with added options
+    // TODO - add to existing field
+
+    $settings = $target['custom_settings'];
+    list($field_name, $action) = explode(':', $mapping['target']);
+    $field_info = field_info_field($field_name);
+    $field_instance = field_info_instance($settings['entity_type'], $field_name, $settings['bundle']);
+
+    $available_paragraphs = _feeds_paragraphs_mapper_get_paragraph_options($field_instance, $field_info);
+
+    return array(
+        'clear_existing' => array(
+            '#type' => 'checkbox',
+            '#title' => t('Clear out all existing paragraphs from this field'),
+            '#default_value' => $mapping['clear_existing'],
+        ),
+        'paragraph_type' => array(
+            '#type' => 'select',
+            '#title' => t('Select paragraph bundle'),
+            '#options' => $available_paragraphs,
+            '#default_value' => $mapping['paragraph_type'],
+        ),
+        'field_name' => array(
+            '#type' => 'textfield',
+            '#title' => t('Enter the field name'),
+            '#default_value' => $mapping['field_name'],
+            '#description' => t('Enter the machine name. This should be a text field'),
+        ),
+    );
+}
+
+function _feeds_paragraphs_mapper_get_paragraph_options($field_instance, $field_info){
+    $available_bundles = paragraphs_bundle_load();
+    $allowed_bundles = array_filter($field_instance['settings']['allowed_bundles'], '_feeds_paragraphs_mapper_enabled_filter');
+
+    // Enable all paragraph bundles if none are explicitly selected.
+    if (count($allowed_bundles) === 0) {
+        $allowed_bundles = $field_instance['settings']['allowed_bundles'];
+    }
+
+    foreach($allowed_bundles as $machine_name => &$value) {
+        $value = t($available_bundles[$machine_name]->name);
+    }
+
+    // TODO - weighting
+
+    return $allowed_bundles;
+
+}
+
+// Remove disabled bundles.
+function _feeds_paragraphs_mapper_enabled_filter($value){
+    return ($value !== -1);
+}
+
+/**
+ * @param array $mapping
+ *   Associative array of the mapping settings.
+ * @param string $target
+ *   Array of target settings, as defined by the processor or
+ *   hook_feeds_processor_targets_alter().
+ * @param array $form
+ *   The whole mapping form.
+ * @param array $form_state
+ *   The form state of the mapping form.
+ *
+ * @return string
+ *   Returns, as a string that may contain HTML, the summary to display while
+ *   the full form isn't visible.
+ *   If the return value is empty, no summary and no option to view the form
+ *   will be displayed.
+ */
+function feeds_paragraphs_mapper_summary_callback(array $mapping, $target, array $form, array $form_state) {
+    if (empty($mapping['paragraph_type'])) {
+        return t('Not configured');
+    }
+    else {
+        $output = '';
+        if (isset($mapping['clear_existing']) && $mapping['clear_existing']){
+            $output .= t('Clear out any existing paragraphs.') . '<br>';
+        }
+        $output .= t('Create a %paragraph_type paragraph', array('%paragraph_type' => $mapping['paragraph_type']));
+        if (!empty($mapping['field_name'])) {
+            $output .= ' '. t('and set the %field_name field', array('%field_name' => $mapping['field_name']));
+        }
+
+        return $output;
+    }
+}
+
+
+

@@ -1,0 +1,6 @@
+name = Feeds paragraphs mapper
+description = Allows feeds to import content to paragraph fields.
+package = Feeds
+core = 7.x
+dependencies[] = feeds
+dependencies[] = paragraphs

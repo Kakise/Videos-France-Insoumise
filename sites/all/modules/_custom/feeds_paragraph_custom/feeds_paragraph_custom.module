@@ -1,0 +1,154 @@
+<?php
+/**
+ * TODO
+ * Comprendre comment fonctionne le Module et permet l'insertion de paragraph item.
+ *
+ * Le tester ensuite pour voir si il créer plusieurs items paragraphs.
+ *
+ * L'adapter ensuite au fonctionnement du paragraph bundle Sequence et au autres sous champs.
+ *
+ */
+/**
+ * Implements hook_feeds_processor_targets_alter().
+ */
+function feeds_paragraph_custom_feeds_processor_targets_alter(&$targets, $type, $bundle) {
+    if ($type == 'node') {
+        $targets['basic_paragraph_temp'] = array(
+            'name' => t('Basic paragraph for field_s_paragraph'),
+            'description' => t('If populated and host entity has a field_s_paragraph field, this value will be saved as a basic paragraph to this field'),
+            'callback' => 'feeds_paragraph_custom_feeds_basic_paragraph_set_target',
+        );
+    }
+}
+
+/**
+ * Mapping callback for the "Basic paragraph for field_s_paragraph" target
+ */
+function feeds_paragraph_custom_feeds_basic_paragraph_set_target($source, $entity, $target, $value, $mapping) {
+    if (!empty($value[0])) {
+        $entity->basic_paragraph_temp = feeds_paragraph_custom_clean_html($value[0]);
+        //$entity->basic_paragraph_temp = $value[0]; // On zappe le clean html.
+    }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function feeds_paragraph_custom_node_insert($node) {
+// If the node is being created and has a basic_paragraph_temp value from Feeds,
+// create and attach a new paragraph entity
+    if (isset($node->basic_paragraph_temp)) {
+        feeds_paragraph_custom_create_attach_field_s_basic_paragraph_paragraph($node, $node->basic_paragraph_temp);
+    }
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function feeds_paragraph_custom_node_update($node) {
+// If the node is being updated and has a basic_paragraph_temp value from Feeds, process it
+    if (isset($node->basic_paragraph_temp)) {
+        $node_wrapper = entity_metadata_wrapper('node', $node);
+
+// If there are paragraphs, and the first one is a basic_paragraph, then update it
+        if (!empty($node_wrapper->field_s_paragraph[0])) {
+            if ($node_wrapper->field_s_paragraph[0]->getBundle() == 'basic_paragraph') {
+                $old_value = $node_wrapper->field_s_paragraph[0]->field_para_body->value();
+                if ($old_value['value'] != $node->basic_paragraph_temp) {
+                    $node_wrapper->field_s_paragraph[0]->field_para_body->set(array(
+                        'value' => $node->basic_paragraph_temp,
+                        'format' => 'full_html',
+                    ));
+                    $node_wrapper->field_s_paragraph[0]->save();
+                }
+            }
+        }
+        else {
+// We have basic_paragraph_temp data we need to use, so create and attach a new paragraph entity
+            feeds_paragraph_custom_create_attach_field_s_basic_paragraph_paragraph($node, $node->basic_paragraph_temp);
+        }
+    }
+}
+/*********************** PIERRE = Le coeur du module, la création du paragraph item ***********/
+/**
+ * Creates a new basic paragraph entity and attaches it to field_s_paragraph
+ *
+ * @param object $node
+ *   Node to attach the paragraph entity to
+ * @param string $content
+ *   Content for the entity
+ */
+function feeds_paragraph_custom_create_attach_field_s_basic_paragraph_paragraph($node, $content) {
+    /**
+     * TODO
+     * Arriver à créer une boucle passant en revue le $content
+     * et donc arriver d'abord à réunir plusieurs lignes du fichier CSV en une  seule ligne.
+     * Et réunir dans le $content plusieurs colonnes
+     *
+     */
+
+
+    // Create a new "Basic paragraph" paragraph item
+    /**
+     * http://www.drupalcontrib.org/api/drupal/contributions%21entity%21entity.module/function/entity_create/7
+     * entity_create($entity_type, array $values)
+     * $entity_type: The type of the entity.
+     * $values: An array of values to set, keyed by property name. If the entity type has bundles the bundle
+     * key has to be specified.
+     */
+    $paragraph = entity_create('paragraphs_item', array(
+            'field_name' => 'field_s_paragraph',
+            //'bundle' => 'basic_paragraph')
+            'bundle' => 'basic_paragraph')
+    );
+    $paragraph->field_para_body[$node->language][0] = array(
+        'value' => $content,
+        'format' => 'full_html',
+    );
+    /**
+     * TODO
+     * Faudra ajouter les champs du paragraph item à cet endroit, avec l'aide de $paragraph->item_id,
+     */
+    $paragraph->setHostEntity('node', $node);
+    $paragraph->save(TRUE);
+
+
+    // Add the new paragraph item to the parent node
+    // NOTE PIERRE = $node->field_s_paragraph[$node->language][i] ?
+    $node->field_s_paragraph[$node->language][0] = array(
+        'value' => $paragraph->item_id,
+        'revision_id' => $paragraph->revision_id
+    );
+    field_attach_update('node', $node);
+    
+    /**
+     * TODO
+     * Fin de la boucle sur le $content
+     * $node->field_s_paragraph[$node->language][i]
+     */
+
+}
+
+/**
+ * Cleans up HTML (probably not the most robust code, but it'll do)
+ *
+ * @param string $html
+ *   HTML to cleanup
+ *
+ * @return string
+ *   Cleaned HTML
+ */
+function feeds_paragraph_custom_clean_html($html) {
+    $html = str_replace("\n", ' ', $html);
+    $html = str_replace('<b>', '<strong>', $html);
+    $html = str_replace('</b>', '</strong>', $html);
+
+    $replacement = '';
+    $patterns = array(
+        '/<p>[  ]*<\/p>[  ]*/i', // These look like two spaces, but one is character 160
+    );
+
+    $html = preg_replace($patterns, $replacement, $html);
+
+    return $html;
+}

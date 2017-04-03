@@ -1,0 +1,309 @@
+<?php
+/**
+ * Implements hook_entity_presave().
+ *
+ * @param $entity
+ * @param $type
+ *  This function is useful to visualize what is going around when a entity is saved/updated.
+ * It's work well with dpm from the devel module.
+ * But db_insert don't work with it.
+ *
+ */
+/*
+function paragraphs_taxonomy_attach_entity_presave($entity, $type)
+{
+    if(isset($entity->field_name) && $entity->field_name == 'field_sequences') {
+        if(isset($entity->field_tags_themes) && !empty($entity->field_tags_themes)) {
+            dpm($entity);
+
+            $themes_para = $entity->field_tags_themes['und'];
+            $themes_para_insert = $themes_para;
+            //dpm($themes_para);
+            $para_host_entity_ID = $entity->hostEntityId();
+            $para_host_entity = $entity->hostEntity();
+            dpm($para_host_entity);
+            $para_host_entity_bundle = $para_host_entity->type;
+            $created = $para_host_entity->created;
+            if(!empty($para_host_entity->field_tags_themes)) {
+
+                $themes_node = paragraphs_taxonomy_attach_get_data('field_data_field_tags_themes',
+                $para_host_entity_bundle, $para_host_entity_ID);
+            }
+            elseif (empty($para_host_entity->field_tags_themes)) {
+                $themes_node = array();
+            }
+            dpm($themes_node);
+            $delta = count($themes_node); // will return 0 if the array is empty.
+            //Check if not empty. If not loop to check doublons. If not then good to insert.
+            if(!empty($themes_node)){
+                for ($i=0; $i<count($themes_para); $i++) {
+                    for ($y=0; $y<count($themes_node); $y++) {
+                        if ($themes_para[$i]['tid'] == $themes_node[$y]->field_tags_themes_tid) {
+                            dpm("TID doublon : " . $themes_node[$y]->field_tags_themes_tid);
+                            unset($themes_para_insert[$i]);
+                        }
+                    }
+                }
+            }
+
+            //dpm($themes_para_insert);
+            if(!empty($themes_para_insert)){
+                foreach ($themes_para_insert as $insert) {
+                    dpm("TID to insert : " . $insert['tid']);
+                    dpm("delta pre-insert : " . $delta);
+                    $tid=$insert['tid'];
+
+                    db_insert('field_data_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('field_revision_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('taxonomy_index')
+                        ->fields(array(
+                            'nid' => $para_host_entity_ID,
+                            'tid' => $tid,
+                            'sticky' => 0,
+                            'created' => $created,
+                        ))->execute();
+
+                    $delta ++;
+                    dpm("delta post-insert :" .$delta);
+                    drupal_set_message("successfully saved new term");
+                }
+            }
+        }
+    }
+
+}
+*/
+
+function paragraphs_taxonomy_attach_get_data($table, $bundle, $nid)
+{
+    $query = db_select($table, 't')
+        ->condition('t.entity_id', $nid, '=')
+        ->condition('t.bundle', $bundle, '=')
+        ->fields('t');
+
+    $result= $query->execute();
+    foreach ($result as $record) {
+        $get_result[] = $record;
+    }
+    return $get_result;
+}
+
+/**
+ * Hook_entity_postsave
+ * https://www.drupal.org/project/hook_post_action
+ * Check if it's a entity paragraph with a certain field name.
+ * Check if it's has a field tags and if it's not empty.
+ * Make link beetwen the paragraph and its Host Entity, and put some variables.
+ * Check if there are doublons beetwen the values of the two fields tags (the paragraph and the node).
+ * If there are doublons, it's unset them.
+ * IF there are any terms that are not doublons, it will process to insert the infos into the DB with
+ * db_insert().
+ *
+ * You will certainly have different names for yours DB tables, fields, etc.
+ * Use with caution.
+ * dpm() don't work with this hook. use watchdog() instead.
+ */
+
+function paragraphs_taxonomy_attach_entity_postsave($entity, $entity_type, $op) {
+
+    if(isset($entity->field_name) && $entity->field_name == 'field_sequences') {
+        if(isset($entity->field_tags_themes) && !empty($entity->field_tags_themes)) {
+            $themes_para = $entity->field_tags_themes['und'];
+            $themes_para_insert = $themes_para;
+            $para_host_entity_ID = $entity->hostEntityId();
+            $para_host_entity = $entity->hostEntity();
+            $para_host_entity_bundle = $para_host_entity->type;
+            $created = $para_host_entity->created;
+            if(!empty($para_host_entity->field_tags_themes)) {
+                /**
+                 * To avoid problems (with the delta PRIMARY KEY constraint) when saving multiples paragraphs
+                 * with new terms to save in severals of them, we need to check directly search in the DB,
+                 * and not with the entity object.
+                 * It will return an array of stdClass Objects
+                 * */
+                $themes_node = paragraphs_taxonomy_attach_get_data('field_data_field_tags_themes',
+                    $para_host_entity_bundle, $para_host_entity_ID);
+            }
+            elseif (empty($para_host_entity->field_tags_themes)) {
+                $themes_node = array();
+            }
+
+            $delta = count($themes_node); // will return 0 if the array is empty.
+            //Check if not empty. If not loop to check doublons. If not then, good to insert.
+            if(!empty($themes_node)){
+                for ($i=0; $i<count($themes_para); $i++) {
+                    for ($y=0; $y<count($themes_node); $y++) {
+                        if ($themes_para[$i]['tid'] == $themes_node[$y]->field_tags_themes_tid) {
+                            unset($themes_para_insert[$i]);
+                        }
+                    }
+                }
+            }
+
+            if(!empty($themes_para_insert)){
+                foreach ($themes_para_insert as $insert) {
+                    $tid=$insert['tid'];
+                    db_insert('field_data_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('field_revision_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('taxonomy_index')
+                        ->fields(array(
+                            'nid' => $para_host_entity_ID,
+                            'tid' => $tid,
+                            'sticky' => 0,
+                            'created' => $created,
+                        ))->execute();
+
+                    $delta ++;
+                    watchdog('paragraph taxonomy attach', "successfully saved new term for the node {$para_host_entity_ID}");
+                }
+            }
+        }
+    }
+
+}
+/**
+ * TODO
+ * Faire la meme chose mais pour la suppression de paragraphs.
+ */
+
+/**
+ * Implements hook_entity_predelete().
+ *
+ * @param $entity
+ * @param $type
+ *  This function is useful to visualize what is going around when a entity is saved/updated.
+ * It's work well with dpm from the devel module.
+ * But db_insert don't work with it.
+ *
+ */
+/*
+function paragraphs_taxonomy_attach_entity_delete($entity, $type)
+{
+    if(isset($entity->field_name) && $entity->field_name == 'field_sequences') {
+        if(isset($entity->field_tags_themes) && !empty($entity->field_tags_themes)) {
+            dpm($entity);
+
+            $themes_para = $entity->field_tags_themes['und'];
+            $themes_para_insert = $themes_para;
+            //dpm($themes_para);
+            $para_host_entity_ID = $entity->hostEntityId();
+            $para_host_entity = $entity->hostEntity();
+            dpm($para_host_entity);
+            $para_host_entity_bundle = $para_host_entity->type;
+            $created = $para_host_entity->created;
+            if(!empty($para_host_entity->field_tags_themes)) {
+
+                $themes_node = paragraphs_taxonomy_attach_get_data('field_data_field_tags_themes',
+                $para_host_entity_bundle, $para_host_entity_ID);
+            }
+            elseif (empty($para_host_entity->field_tags_themes)) {
+                $themes_node = array();
+            }
+            dpm($themes_node);
+            $delta = count($themes_node); // will return 0 if the array is empty.
+            //Check if not empty. If not loop to check doublons. If not then good to insert.
+            if(!empty($themes_node)){
+                for ($i=0; $i<count($themes_para); $i++) {
+                    for ($y=0; $y<count($themes_node); $y++) {
+                        if ($themes_para[$i]['tid'] == $themes_node[$y]->field_tags_themes_tid) {
+                            dpm("TID doublon : " . $themes_node[$y]->field_tags_themes_tid);
+                            unset($themes_para_insert[$i]);
+                        }
+                    }
+                }
+            }
+
+            //dpm($themes_para_insert);
+            if(!empty($themes_para_insert)){
+                foreach ($themes_para_insert as $insert) {
+                    dpm("TID to insert : " . $insert['tid']);
+                    dpm("delta pre-insert : " . $delta);
+                    $tid=$insert['tid'];
+
+                    db_insert('field_data_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('field_revision_field_tags_themes')
+                        ->fields(array(
+                            'entity_type' => 'node',
+                            'bundle' => $para_host_entity_bundle,
+                            'deleted' => 0,
+                            'entity_id' => $para_host_entity_ID,
+                            'revision_id' => $para_host_entity_ID,
+                            'language' => 'und',
+                            'delta' => $delta,
+                            'field_tags_themes_tid' => $tid,
+                        ))->execute();
+
+                    db_insert('taxonomy_index')
+                        ->fields(array(
+                            'nid' => $para_host_entity_ID,
+                            'tid' => $tid,
+                            'sticky' => 0,
+                            'created' => $created,
+                        ))->execute();
+
+                    $delta ++;
+                    dpm("delta post-insert :" .$delta);
+                    drupal_set_message("successfully saved new term");
+                }
+            }
+        }
+    }
+
+}
+*/
+

@@ -1,0 +1,37 @@
+
+<FilesMatch "^css__[A-Za-z0-9-_]{43}__[A-Za-z0-9-_]{43}__[A-Za-z0-9-_]{43}.css(\.gz)?">
+  # No mod_headers. Apache module headers is not enabled.
+  <IfModule !mod_headers.c>
+    # No mod_expires. Apache module expires is not enabled.
+    <IfModule !mod_expires.c>
+      # Use ETags.
+      FileETag MTime Size
+    </IfModule>
+  </IfModule>
+
+  # Use Expires Directive if apache module expires is enabled.
+  <IfModule mod_expires.c>
+    # Do not use ETags.
+    FileETag None
+    # Enable expirations.
+    ExpiresActive On
+    # Cache all aggregated css files for 52 weeks after access (A).
+    ExpiresDefault A31449600
+  </IfModule>
+
+  # Use Headers Directive if apache module headers is enabled.
+  <IfModule mod_headers.c>
+    # Do not use etags for cache validation.
+    Header unset ETag
+    # Serve correct content type.
+    Header set Content-Type text/css
+    <IfModule !mod_expires.c>
+      # Set a far future Cache-Control header to 52 weeks.
+      Header set Cache-Control "max-age=31449600, no-transform, public"
+    </IfModule>
+    <IfModule mod_expires.c>
+      Header append Cache-Control "no-transform, public"
+    </IfModule>
+  </IfModule>
+  ForceType text/css
+</FilesMatch>

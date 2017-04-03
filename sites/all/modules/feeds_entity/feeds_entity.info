@@ -1,0 +1,15 @@
+name = Feeds Entity
+description = Leverages <a href="http://dgo.to/entity" target="_blank">Entity API</a> to provide new sources and targets for Feeds importers.
+package = Feeds
+core = 7.x
+version = 7.x-1.0
+
+dependencies[] = feeds
+dependencies[] = entity
+
+; Information added by Drupal.org packaging script on 2017-01-18
+version = "7.x-1.0"
+core = "7.x"
+project = "feeds_entity"
+datestamp = "1484744591"
+

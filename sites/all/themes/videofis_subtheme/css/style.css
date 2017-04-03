@@ -1,0 +1,264 @@
+/**
+ * Place your custom styles here.
+ */
+ 
+/*Styling for Menus.
+ */
+#admin-menu { 
+    z-index: 9999;
+}
+.navbar-nav {
+	font-size: 1.2em;
+	font-weight: 500;
+}
+.navbar-header {
+	font-size: 1.5em;
+	font-weight: 500;
+	margin-top:5px;	
+}
+
+.navbar-nav i {
+	margin-right: 5px; 
+}
+.navbar-nav a i {
+	margin-top:5px;
+}	
+
+.sf-accordion-toggle {
+	margin-top: 25px;
+}
+.navbar-header .navbar-toggle {
+   border-color: #317eac;
+   margin: 0px;
+}
+.navbar-header .navbar-toggle .icon-bar {
+  background-color: #317eac;
+}
+
+/* Styling for Typography
+*/
+h1, .h1 {
+    font-size: 36px;
+}
+
+h2, .h2 {
+    font-size: 28px;
+}
+
+h1, .h1, h2, .h2, h3, .h3 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    line-height: 1.2;
+    color: #317eac;
+}
+
+/*Styling for Taxonomy.
+ */
+.field-type-taxonomy-term-reference {
+	 margin-bottom: 10px;
+ }
+.field-type-taxonomy-term-reference .field-label {
+	margin-bottom: 3px;
+}
+.field-type-taxonomy-term-reference .field-item {
+	 display: inline-block; 
+ }
+.field-type-taxonomy-term-reference a {
+    margin: .3em;
+	/*margin-bottom: .3em;*/
+	padding: .3em .7em .3em;
+    font-size: 95%;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: .35em;	
+}
+.field-name-field-sequences .field-type-taxonomy-term-reference a {
+    padding : 0px;
+}
+
+
+/*Styling for Content. */
+
+
+@media screen and (max-width : 1090px) {
+  .main-container.container-fluid {
+  width: 90%;
+  margin: 0 auto;
+  }
+}
+ .col-md-10 {
+  float: none;
+  margin: 10px auto;
+}
+
+.region.region-header {
+  margin-bottom: 25px;
+}
+
+@media screen and (min-width : 1090px) {
+  .region.region-header {
+  width: 81%;
+  margin: 0 auto;
+  }
+}
+
+
+.row .panel-col {
+	border : 1px;
+	border-color: #000000;
+}
+
+#main-content>.page-header, #main-content>.view-empty {
+    text-align: center;
+}
+.region-sidebar-first .fa {
+    padding-right: 5px;
+}
+.region-sidebar-first .nav li a {
+    padding: 2px 15px;
+}
+/** Styling for Paragraphs */
+.field-name-field-sequences .ds-3col-equal > .group-left {
+    width: 45%;
+}
+
+.field-name-field-sequences .ds-3col-equal > .group-middle {
+    width: 42%;
+}
+
+.field-name-field-sequences .ds-3col-equal > .group-right {
+    width: 13%;
+}
+#navbar .navbar-defaut .navbar-nav>li>a, #navbar .navbar-default .navbar-header .navbar-brand {
+    color: #23b9d0 !important;
+}
+
+
+/** Styling for Search */
+.block-facetapi.contextual-links-region h3 {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+#edit-reset {
+    color: #fff;
+	background-color: #ff7396;	
+}
+.search-row {
+ 	margin-bottom: 25px;   	
+}
+
+#edit-submit-search-view {
+  border: 1px solid #86c2ff;
+  -moz-box-shadow: 1px 1px 2px 1px #86c2ff;
+  -webkit-box-shadow: 1px 1px 2px 1px #86c2ff;
+  -o-box-shadow: 1px 1px 2px 1px #86c2ff;
+  box-shadow: 1px 1px 2px 1px #86c2ff;
+  filter:progid:DXImageTransform.Microsoft.Shadow(color=#86c2ff, Direction=134, Strength=2);
+}
+#views-exposed-form-search-view-page .views-exposed-form .views-exposed-widget .btn {
+   margin-top: 1em;
+}
+
+.paragraphs-item-sequence {
+    border : 1px solid darkgrey;
+}
+/* Styling Quicktabs */
+
+ul.quicktabs-tabs.quicktabs-style-nostyle li   {
+  padding: 10px;
+  margin-right: 3%;
+  margin-bottom: 25px;
+  background-color: #73b9ff;
+  border-radius:1em;
+}
+ul.quicktabs-tabs.quicktabs-style-nostyle li.active   {
+  background-color: #006cd9;
+}
+
+ul.quicktabs-tabs.quicktabs-style-nostyle li   a{
+  font-size: 18px;
+  color: white;
+}
+
+
+#quicktabs-container-front_quicktabs {
+  margin-top: 15px;
+}
+@media screen and (max-width : 499px) {
+  ul.quicktabs-tabs li {
+    display: block;
+    text-align: center;
+  }
+}
+/* Footer */
+
+html, body {
+  height: 100%;
+  }
+  
+.main-container{ /* cannot have margin, padding or border styles because scrollbar will appear */
+    min-height: 100%;
+	height: auto !important;
+    margin-bottom: -80px; /* Negative indent footer by it's height */
+	padding: 0 0 80px;
+}
+
+.footer-container {
+	margin-top : 10px;
+	padding: 10px 0 5px;
+	background-color: #222;
+	color: #fff;
+    height: auto;
+	width: 100%;
+}
+
+.footer-container a {
+	color: #fff;
+}
+.region.region-footer {
+  border: 2px solid #fff;
+}
+
+.navbar {
+	margin-bottom : 5px;
+}
+.nav-footer .navbar-header-footer{
+	text-align: center;
+	width: 90%;
+	margin-left: auto;
+	margin-right: auto;
+	padding-bottom: 10px;
+}
+
+.nav-footer .navbar-header-footer a{
+    font-size: 24px;
+	font-weight: 700;
+	color: #317eac;
+}
+.nav-footer .navbar-toggle {
+   border-color: #ecf0f1;
+   margin: 0px;
+}
+.nav-footer .navbar-toggle .icon-bar {
+  background-color: #ecf0f1;
+}
+
+.nav-footer li a:hover {
+	color: #0080ff;
+	background-color: #222;	
+}
+.nav-footer .block-title {
+	margin: 5px 0px 5px;
+	font-size : 19px;
+}
+.nav-footer .block a {
+	padding: 5px 2px 2px 2px;
+}

@@ -1,0 +1,182 @@
+<?php
+
+/**
+ * @file
+ * Module file for Feeds Entity.
+ */
+
+/**
+ * Implements hook_feeds_parser_sources_alter().
+ */
+function feeds_entity_feeds_parser_sources_alter(&$sources, $content_type) {
+  if (!empty($content_type)) {
+    $source_properties = _feeds_entity_get_bundle_properties($content_type);
+    foreach ($source_properties as $property => $def) {
+      if (!isset($def['type']) || $def['type'] != 'list<og_membership>') {
+        $sources['source_node:' . $property] = array(
+          'name' => t('Source node: @field', array('@field' => $def['label'])),
+          'description' => t('@desc', array('@desc' => isset($def['description']) ? $def['description'] : '')),
+          'callback' => 'feeds_entity_feeds_source_get_source_node_property',
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Source callback function which returns values of source node properties.
+ *
+ * @param \FeedsSource $source
+ *   Feeds source object.
+ * @param \FeedsParserResult $result
+ *   Feeds parser result.
+ * @param string $key
+ *   Source identifier.
+ *
+ * @return mixed
+ *   Value of the source node property if exists, NULL otherwise.
+ *
+ * @see my_source_get_source()
+ * @see feeds_entity_feeds_parser_sources_alter()
+ */
+function feeds_entity_feeds_source_get_source_node_property(FeedsSource $source, FeedsParserResult $result, $key) {
+  $source_properties = _feeds_entity_get_bundle_properties($source->importer()->config['content_type']);
+  list(, $property) = explode(':', $key);
+  if (isset($source_properties[$property]) && $feed_node = node_load($source->feed_nid)) {
+    $getter_callback = isset($source_properties[$property]['getter callback']) ? $source_properties[$property]['getter callback'] : 'entity_property_verbatim_get';
+    $value = $getter_callback($feed_node, array(), $property, $source->importer()->config['content_type'], $source_properties[$property]);
+    return $value;
+  }
+  return NULL;
+}
+
+/**
+ * Implements hook_feeds_processor_targets_alter().
+ */
+function feeds_entity_feeds_processor_targets_alter(&$targets, $entity_type, $bundle) {
+  $target_properties = _feeds_entity_get_bundle_properties($bundle, $entity_type);
+  foreach ($target_properties as $property => $def) {
+    if ((!isset($def['type']) || $def['type'] != 'list<og_membership>') && (!isset($def['computed']) || !$def['computed'])) {
+      $targets['target:' . $entity_type . ':' . $property] = array(
+        'name' => t('Target @entity: @field', array('@entity' => $entity_type, '@field' => $def['label'])),
+        'description' => t('@desc', array('@desc' => isset($def['description']) ? $def['description'] : '')),
+        'callback' => 'feeds_entity_feeds_source_set_target_entity_property',
+      );
+      if (isset($targets[$property]['optional_unique'])) {
+        $targets['target:' . $entity_type . ':' . $property]['optional_unique'] = $targets[$property]['optional_unique'];
+      }
+      if (isset($targets[$property]['unique_callbacks']) && in_array('field_validation_feeds_existing_entity_id', $targets[$property]['unique_callbacks'])) {
+        // Probably 0, but just to be sure.
+        $index = array_search('field_validation_feeds_existing_entity_id', $targets[$property]['unique_callbacks']);
+        $targets['target:' . $entity_type . ':' . $property]['unique_callbacks'] = $targets[$property]['unique_callbacks'];
+        $targets['target:' . $entity_type . ':' . $property]['unique_callbacks'][$index] = 'feeds_entity_field_validation_feeds_existing_entity_id_wrapper';
+      }
+    }
+  }
+}
+
+/**
+ * Custom wrapper aroud unqiue validation callbacks of this module's targets.
+ *
+ * @param \FeedsSource $source
+ *   Feed source object.
+ * @param string $entity_type
+ *   Entity type.
+ * @param string $bundle
+ *   Entity bundle.
+ * @param string $target
+ *   Target identifier.
+ * @param array $values
+ *   Value from the source.
+ *
+ * @return int
+ *   The existing entity id, or 0 if not found.
+ */
+function feeds_entity_field_validation_feeds_existing_entity_id_wrapper(FeedsSource $source, $entity_type, $bundle, $target, array $values) {
+  if (strpos($target, 'target:') === 0) {
+    list(, , $target) = explode(':', $target);
+  }
+  return field_validation_feeds_existing_entity_id($source, $entity_type, $bundle, $target, $values);
+}
+
+/**
+ * Target callback function which sets source value on target entity.
+ *
+ * @param \FeedsSource $source
+ *   Feeds source object.
+ * @param \stdClass $entity
+ *   Entity object.
+ * @param string $target
+ *   Target identifier.
+ * @param array $value
+ *   Value from the source.
+ * @param array $mapping
+ *   Mapping definition.
+ *
+ * @see my_module_set_target()
+ * @see feeds_entity_feeds_processor_targets_alter()
+ */
+function feeds_entity_feeds_source_set_target_entity_property(FeedsSource $source, stdClass $entity, $target, array $value, array $mapping) {
+  if (empty($value)) {
+    return;
+  }
+  list(, $entity_type, $property) = explode(':', $target);
+  // TODO Which is the fastest, wrapping with EMW or calling "setter callback"?
+  $wrapper = entity_metadata_wrapper($entity_type, $entity);
+  $target_field = field_info_field($property);
+  // If target is a property and not a field or it's cardinality is 1, then
+  // convert $value array to a single value.
+  // $value is always passed as an array according to
+  // FeedsProcessor::mapToTarget().
+  if ($target_field == NULL || $target_field['cardinality'] == 1) {
+    if (count($value) > 1) {
+      $source->log('import', "@source source contained multiple values and it was necessary to convert it to a single value for @target.", array('@source' => $mapping['source'], '@target' => $mapping['target']), WATCHDOG_WARNING);
+    }
+    $value = array_pop($value);
+  }
+  if (!empty($wrapper->{$property})) {
+    if ($wrapper->{$property}->validate($value)) {
+      $wrapper->{$property} = $value;
+    }
+    else {
+      $source->log('import', "@source source's value cannot be set as @target target's value. Raw value: <pre>@value</pre>.", array(
+        '@source' => $mapping['source'],
+        '@target' => $mapping['target'],
+        '@value' => print_r($value, TRUE),
+      ), WATCHDOG_ERROR);
+    }
+  }
+}
+
+/**
+ * Helper function which returns all entity properties of an entity bundle.
+ *
+ * @param string $bundle
+ *   Entity bundle.
+ * @param string $entity_type
+ *   Entity type.
+ *
+ * @return array
+ *   Array of entity bundle properties.
+ */
+function _feeds_entity_get_bundle_properties($bundle, $entity_type = 'node') {
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static_fast;
+  $query_id = 'entity_bundle_properties:' . $entity_type . ':' . $bundle;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast = &drupal_static(__FUNCTION__);
+  }
+  $source_properties = &$drupal_static_fast[$query_id];
+  if (!isset($source_properties)) {
+    $source_properties = array();
+    $info = entity_get_property_info($entity_type);
+    $source_properties += $info['properties'];
+    // Mappings form is available without specifying target entity bundle.
+    // Ex.: Node processor.
+    if (!empty($bundle)) {
+      $source_properties += $info['bundles'][$bundle]['properties'];
+    }
+    return $source_properties;
+  }
+  return $source_properties;
+}

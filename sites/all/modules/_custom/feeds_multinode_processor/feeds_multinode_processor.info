@@ -1,0 +1,5 @@
+name = Feeds Multi-node Processor
+description = Import to multiple content types
+package = Feeds
+dependencies[] = feeds
+core = 7.x

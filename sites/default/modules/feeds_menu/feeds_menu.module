@@ -1,0 +1,127 @@
+<?php
+
+/**
+ * Get plid by guid
+ * plid ?
+ * guid ?
+ */
+function feeds_menu_plidByGuid($guid) {
+    $nid = db_select( 'feeds_item' , 'f' )
+        ->fields( 'f' , array('entity_id') )
+        ->condition( 'f.guid' , $guid )
+        ->execute()
+        ->fetchField();
+
+    $mlid = db_select( 'menu_links' , 'ml' )
+        ->fields( 'ml' , array('mlid') )
+        ->condition( 'ml.link_path' , 'node/' . $nid )
+        ->execute()
+        ->fetchField();
+
+    return $mlid;
+}
+
+/**
+ * Implements hook_feeds_processor_targets_alter() for node_reference fields
+ *
+ * @see FeedsNodeProcessor::getMappingTargets().
+ */
+function feeds_menu_feeds_processor_targets_alter(&$targets, $entity_type, $bundle_name) {
+    if ( module_exists('menu') ) {
+        $targets['menu_name'] = array(
+            'name' => t('Menu name'),
+            'description' => t('The system name of the menu in which to add a link. The menu must be enabled in the content type.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+
+        $targets['menu_entry_title'] = array(
+            'name' => t('Menu link title'),
+            'description' => t('Select the menu entry title. If none is selected the node title will be used. If no node title is defined the fallback "Missing title!" will be used.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+
+        $targets['menu_entry_description'] = array(
+            'name' => t('Menu link description'),
+            'description' => t('Optional. Set the menu entry description.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+
+        $targets['menu_entry_parent_nid'] = array(
+            'name' => t('Menu link parent (by NID)'),
+            'description' => t('Optional. Set the menu entry parent for hirachical import.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+
+        $targets['menu_entry_parent_guid'] = array(
+            'name' => t('Menu link parent (by Feeds GUID)'),
+            'description' => t('Optional. Set the menu entry parent for hirachical import.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+
+        $targets['menu_entry_weight'] = array(
+            'name' => t('Menu link weight'),
+            'description' => t('Optional. Set the menu entry weight.'),
+            'callback'  => 'feeds_menu_feeds_set_target',
+        );
+    }
+}
+
+/**
+ * Implementation of hook_feeds_set_target().
+ *
+ * @param $source
+ *   A FeedsSource object.
+ * @param $entity
+ *   The entity to map to.
+ * @param $target
+ *   The target key on $entity to map to.
+ * @param $value
+ *   The value to map. Can be an array or a string.
+ */
+function feeds_menu_feeds_set_target($source, &$entity, $target, $value, $mapping) {
+
+    switch ($target) {
+        case 'menu_name': {
+            $entity->menu['menu_name'] = $value;
+            $entity->menu['enabled'] = 1;
+
+            if ( empty( $entity->menu['description'] ) ) {
+                $entity->menu['description'] = '';
+            }
+
+            if ( empty( $entity->menu['link_title'] ) ) {
+                if ( isset( $entity->title ) ) {
+                    $entity->menu['link_title'] = $entity->title;
+                } else {
+                    $entity->menu['link_title'] = t('Missing title');
+                }
+            }
+        } break;
+
+        case 'menu_entry_title': {
+            if ( !empty( $value ) ) {
+                $entity->menu['link_title'] = $value;
+            } elseif ( isset( $entity->title ) ) {
+                $entity->menu['link_title'] = $entity->title;
+            } else {
+                $entity->menu['link_title'] = t('Missing title');
+            }
+        } break;
+
+        case 'menu_entry_description': {
+            $entity->menu['description'] = $value;
+        } break;
+
+        case 'menu_entry_parent_nid': {
+            $entity->menu['plid'] = $value;
+        } break;
+
+        case 'menu_entry_parent_guid': {
+            $entity->menu['plid'] = feeds_menu_plidByGuid( $value );
+        } break;
+
+        case 'menu_entry_weight': {
+            $entity->menu['weight'] = $value;
+        } break;
+    }
+}

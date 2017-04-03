@@ -1,0 +1,1 @@
+The presence of this file indicates that this directory has been tested as safe to use as a destination for Backup and Migrate. If you change the permissions of this directory or change your web server settings, please delete this file so that the directory can be checked again.

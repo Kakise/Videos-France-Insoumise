@@ -1,0 +1,21 @@
+<?php
+
+/**
+ * @file
+ * Install/uninstall hooks.
+ */
+
+function feeds_multinode_processor_install() {
+    $spec = array(
+        'description' => 'The bundle for this feeds item.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+        'default' => '',
+    );
+    db_add_field('feeds_item', 'bundle', $spec);
+}
+
+function feeds_multinode_processor_uninstall() {
+    db_drop_field('feeds_item', 'bundle');
+}

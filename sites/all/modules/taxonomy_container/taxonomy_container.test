@@ -1,0 +1,142 @@
+<?php
+
+/**
+ * @file
+ * Tests for taxonomy_container.module.
+ */
+
+/**
+ * Base class for all taxonomy container test cases.
+ */
+class TaxonomyContainerTestCase extends TaxonomyWebTestCase {
+
+  /**
+   * Information about the test.
+   */
+  public static function getInfo() {
+    return array(
+      'name' => 'Taxonomy container widget',
+      'description' => 'Test the Taxonomy container widget.',
+      'group' => 'Taxonomy container',
+    );
+  }
+
+  /**
+   * Prepare environment.
+   */
+  public function setUp() {
+    parent::setUp('taxonomy', 'taxonomy_container');
+
+    $this->user = $this->drupalCreateUser(array(
+      'administer content types',
+      'create article content',
+    ));
+    $this->drupalLogin($this->user);
+
+    // Create a new vocabulary and add a few terms to it.
+    $this->vocabulary = $this->createVocabulary();
+    $terms = array();
+    for ($i = 0; $i < 9; $i++) {
+      $terms[$i] = $this->createTerm($this->vocabulary);
+      if ($i % 3) {
+        $terms[$i]->parent = array($terms[$i - 1]->tid);
+        taxonomy_term_save($terms[$i]);
+      }
+    }
+    $this->fieldName = 'taxonomy_container_test_field';
+
+    // Create new taxonomy_term_reference field.
+    $field = array(
+      'field_name' => $this->fieldName,
+      'type' => 'taxonomy_term_reference',
+      'cardinality' => 1,
+      'settings' => array(
+        'allowed_values' => array(
+          array(
+            'vocabulary' => $this->vocabulary->machine_name,
+            'parent' => 0,
+          ),
+        ),
+      ),
+    );
+    field_create_field($field);
+
+    // Create new instans of taxonomy_term_reference field.
+    $this->instance = array(
+      'field_name' => $this->fieldName,
+      'label' => 'Taxonomy container test field',
+      'bundle' => 'article',
+      'entity_type' => 'node',
+      'required' => 1,
+      'widget' => array(
+        'type' => 'options_select',
+      ),
+      'display' => array(
+        'default' => array(
+          'type' => 'taxonomy_term_reference_link',
+        ),
+      ),
+    );
+    field_create_instance($this->instance);
+  }
+
+  /**
+   * Check select list.
+   *
+   * Open node/add/article page and verify that all given
+   * optgroups and options are present in the select list.
+   */
+  public function checkSelectList($required = FALSE) {
+    $this->drupalGet('node/add/article');
+    $widgets = $this->xpath('//select[@id="edit-taxonomy-container-test-field-und"]');
+
+    if ($this->assert(isset($widgets[0]), t('Widget found.'))) {
+      // Regression test for #1281662.
+      $none_exists = isset($widgets[0]->option[0]) && $widgets[0]->option[0] == t('- None -');
+      if ($required) {
+        $this->assertTrue($none_exists, t('"!none" exists in select list', array('!none' => t('- None -'))));
+      }
+      else {
+        $this->assertFalse($none_exists, t('"!none" doesn\'t exist in select list', array('!none' => t('- None -'))));
+      }
+
+      for ($i = 0; $i < 3; $i++) {
+        $options = $widgets[0]->optgroup[$i]->option;
+        $this->assert(
+          count($options) == 2
+          && preg_match('#^-.*#', $options[0])
+          && preg_match('#^--.*#', $options[1]),
+          'Test optgroup №' . ($i + 1));
+      }
+    }
+  }
+
+  /**
+   * Test taxonomy container widget.
+   */
+  public function testWidget() {
+    $this->drupalGet('admin/structure/taxonomy/' . $this->vocabulary->machine_name);
+
+    $this->drupalGet('admin/structure/types/manage/article/fields/' . $this->fieldName . '/widget-type');
+    $taxonomy_container_options = $this->xpath('//select[@id="edit-widget-type"]/option[@value="taxonomy_container"]');
+    $this->assert(count($taxonomy_container_options) == 1, 'Taxonomy container widget is present');
+
+    $this->drupalPost(NULL, array('widget_type' => 'taxonomy_container'), t('Continue'));
+    $this->assertText(t('Changed the widget for field Taxonomy container test field.'));
+    $this->assertLink(t('Select list (with groups)'));
+
+    // Check that widget is changed in database.
+    $field_instance = field_read_instance('node', 'taxonomy_container_test_field', 'article');
+    $this->assert(
+      $field_instance['widget']['type'] == 'taxonomy_container',
+      t('Widget is changed in database.')
+    );
+
+    $this->checkSelectList();
+
+    // Also we need check it when field isn't required.
+    $field_instance['required'] = 0;
+    field_update_instance($field_instance);
+    $this->checkSelectList(TRUE);
+  }
+}

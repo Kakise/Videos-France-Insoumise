@@ -1,0 +1,6 @@
+name = Feeds Menu
+description = Import nodes with menu entries
+package = Feeds
+dependencies[] = feeds
+dependencies[] = menu
+core = 7.x

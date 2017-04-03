@@ -1,0 +1,105 @@
+<?php
+
+/**
+ * @file
+ * Allows users to organize containers using taxonomy terms.
+ */
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function taxonomy_container_field_widget_info() {
+  return array(
+    'taxonomy_container' => array(
+      'label' => t('Select list (with groups)'),
+      'field types' => array('taxonomy_term_reference'),
+      'behaviors' => array('multiple values' => FIELD_BEHAVIOR_CUSTOM),
+      'settings' => array('multiple_select_size' => 5),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function taxonomy_container_field_widget_settings_form($field, $instance) {
+  $form['multiple_select_size'] = array(
+    '#type' => 'textfield',
+    '#disabled' => $field['cardinality'] == 1,
+    '#size' => 5,
+    '#title' => t('Size of select box'),
+    '#description' => t('Only for multi-select boxes. If left blank the browser default value will be used.'),
+    '#default_value' => $instance['widget']['settings']['multiple_select_size'],
+    '#field_suffix' => t('rows'),
+    '#element_validate' => array('element_validate_integer_positive'),
+  );
+  return $form;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function taxonomy_container_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  global $language;
+
+  // Abstract over the actual field columns, to allow different field types to
+  // reuse those widgets.
+  $value_key = key($field['columns']);
+
+  $multiple = $field['cardinality'] > 1 || $field['cardinality'] == FIELD_CARDINALITY_UNLIMITED;
+  $properties = _options_properties('select', $multiple, $element['#required'], isset($items[0][$value_key]));
+  $options = array();
+
+  // Compile the tree of options.
+  foreach ($field['settings']['allowed_values'] as $tree) {
+    if ($vocabulary = taxonomy_vocabulary_machine_name_load($tree['vocabulary'])) {
+      $tree = taxonomy_get_tree($vocabulary->vid, $tree['parent']);
+      foreach ($tree as $key => $term) {
+        // Translate term name.
+        if (module_exists('i18n_taxonomy')) {
+          $term->name = i18n_taxonomy_term_name($term, $language->language);
+        }
+        if ($term->parents[0] == 0) {
+          $parent_name = $term->name;
+          // Allow parents without children to be selected.
+          if (!isset($tree[$key + 1]) || $tree[$key + 1]->parents[0] == 0) {
+            $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
+          }
+        }
+        else {
+          $options[$parent_name][$term->tid] = str_repeat('-', $term->depth) . $term->name;
+        }
+      }
+    }
+  }
+
+  // Add empty option.
+  if ($properties['empty_option']) {
+    $instance['widget']['type'] = 'options_select';
+    $label = theme('options_none', array('instance' => $instance, 'option' => $properties['empty_option']));
+    $options = array('_none' => $label) + $options;
+  }
+
+  // Sanitize the options.
+  _options_prepare_options($options, $properties);
+
+  // Put current field values in shape.
+  $default_value = _options_storage_to_form($items, $options, $value_key, $properties);
+
+  $element += array(
+    '#type' => 'select',
+    '#default_value' => $default_value,
+    // Do not display a 'multiple' select box if there is only one option.
+    '#multiple' => $multiple && count($options) > 1,
+    '#options' => $options,
+    '#value_key' => $value_key,
+    '#element_validate' => array('options_field_widget_validate'),
+    '#properties' => $properties,
+  );
+
+  if ($multiple && !empty($instance['widget']['settings']['multiple_select_size'])) {
+    $element['#size'] = $instance['widget']['settings']['multiple_select_size'];
+  }
+
+  return $element;
+}

@@ -1,0 +1,6 @@
+name = Paragraph Taxonomy Attach
+description = Allows Taxonomy term field in a Paragraph entity to be linked to the main entity.
+package = Paragraphs
+core = 7.x
+dependencies[] = paragraphs
+dependencies[] = hook_post_action

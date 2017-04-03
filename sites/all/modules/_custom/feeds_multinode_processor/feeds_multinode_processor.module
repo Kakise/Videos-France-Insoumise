@@ -1,0 +1,37 @@
+<?php
+
+/**
+ * @file
+ * Module file for feeds_multinode_processor.module.
+ */
+
+/**
+ * Implements hook_feeds_plugins().
+ */
+function feeds_multinode_processor_feeds_plugins() {
+
+    $info = array();
+    $info['FeedsMultiNodeProcessor'] = array(
+        'name' => 'Multi-node processor',
+        'description' => 'Create and update nodes from multiple content types.',
+        'handler' => array(
+            'class' => 'FeedsMultiNodeProcessor',
+            'file' => 'FeedsMultiNodeProcessor.inc',
+            'parent' => 'FeedsNodeProcessor',
+            'path' => drupal_get_path('module', 'feeds_multinode_processor'),
+        ),
+    );
+    return $info;
+}
+
+/**
+ * Implements hook_schema_alter().
+ */
+function feeds_multinode_processor_schema_alter(&$schema) {
+    $schema['feeds_item']['fields']['bundle'] = array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+        'default' => '',
+    );
+}

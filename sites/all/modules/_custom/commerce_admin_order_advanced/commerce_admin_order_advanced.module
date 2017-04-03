@@ -1,0 +1,607 @@
+<?php
+/**
+ * @file
+ * Provides advanced admin order interface.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_admin_order_advanced_menu() {
+  $items = array();
+
+  $items['user/email/autocomplete'] = array(
+    'title' => 'User email autocomplete',
+    'page callback' => '_commerce_admin_order_advanced_email_autocomplete',
+    'access callback' => 'user_access',
+    'access arguments' => array('access user profiles'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['user/addressfield/autocomplete'] = array(
+    'title' => 'User addressfield autocomplete',
+    'page callback' => 'commerce_admin_order_advanced_profile_autocomplete',
+    'access callback' => 'user_access',
+    'access arguments' => array('access user profiles'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/commerce/orders/customers/search'] = array(
+    'title' => 'Search for customers',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_admin_order_advanced_search_customers_form'),
+    'access callback' => 'commerce_customer_profile_access',
+    'access arguments' => array('view'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/commerce/orders/add/use-existing/%/%'] = array(
+    'title' => 'Use existing user',
+    'page callback' => 'commerce_admin_order_advanced_use_existing_user',
+    'page arguments' => array(5, 6),
+    'access callback' => 'commerce_customer_profile_access',
+    'access arguments' => array('view'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function commerce_admin_order_advanced_menu_alter(&$items) {
+  // Override the page callback for the default order add form to user our
+  // customer form.
+  if (!empty($items['admin/commerce/orders/add'])) {
+    $items['admin/commerce/orders/add']['page callback'] = 'drupal_get_form';
+    $items['admin/commerce/orders/add']['page arguments'] = array('commerce_admin_order_advanced_search_customers_form');
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Alter the admin checkout form to add copy address functionality and a custom
+ * line item search form.
+ */
+function commerce_admin_order_advanced_form_commerce_order_ui_order_form_alter(&$form, &$form_state) {
+  $profile_types = commerce_customer_profile_types();
+
+  // Loop through each of the commerce customer profile types to add copy
+  // address functionality.
+  foreach ($profile_types as $profile_type) {
+    $copy_dest = $profile_type['type'];
+
+    // Determine if this field should have the copy profile option.
+    $copy_profile = variable_get('commerce_customer_profile_' . $copy_dest . '_profile_copy', FALSE);
+
+    if (!empty($copy_profile)) {
+      $language = $form['commerce_customer_' . $copy_dest]['#language'];
+
+      // Get the field that profile values should copy from.
+      $copy_source = variable_get('commerce_customer_profile_' . $copy_dest . '_profile_copy_source');
+
+      // Add the ajax wrappers around the customer address form fields.
+      $form['commerce_customer_' . $copy_dest]['#prefix'] = '<div id="commerce-admin-order-advanced-commerce-customer-' . $copy_dest . '-ajax-wrapper">';
+      $form['commerce_customer_' . $copy_dest]['commerce_customer_address']['#suffix'] = '</div>';
+
+      // Add a visible state to hide the profile if copy existing is clicked.
+      $form['commerce_customer_' . $copy_dest][$language]['profiles'][0]['commerce_customer_address']['#states'] = array(
+        'visible' => array(
+          ':input[name="profile_copy_' . $copy_dest . '"]' => array('checked' => FALSE),
+        ),
+      );
+
+      // Create the checkbox to trigger the profile copy.
+      $form['commerce_customer_' . $copy_dest][$language]['profiles'][0]['profile_copy_' . $copy_dest] = array(
+        '#type' => 'checkbox',
+        '#tree' => FALSE,
+        '#title' => t('Copy the customers @copy_source to this @copy_dest profile.', array('@copy_source' => $copy_source, '@copy_dest' => $copy_dest)),
+        '#options' => array(0 => FALSE, TRUE => $copy_dest),
+        '#validate' => array('commerce_admin_order_advanced_profile_copy_validate'),
+        '#weight' => -10,
+        '#ajax' => array(
+          'callback' => 'commerce_admin_order_advanced_profile_refresh',
+          'wrapper' => 'commerce-admin-order-advanced-commerce-customer-' . $copy_dest . '-ajax-wrapper',
+        ),
+      );
+    }
+  }
+}
+
+/**
+ * Validation callback for the admin copy address profile ajax function.
+ */
+function commerce_admin_order_advanced_profile_copy_validate($form, &$form_state) {
+  $triggering_element = $form_state['triggering_element'];
+
+  // Load the destination from the triggering element options.
+  $copy_dest = $triggering_element['#options'][1];
+
+  if ($triggering_element['#value'] == 0) {
+    $form_state['copy_' . $copy_dest] = FALSE;
+  }
+  else {
+    $form_state['copy_' . $copy_dest] = TRUE;
+    // Determine the appropriate source to copy the profile fields from.
+    $copy_source = variable_get('commerce_customer_profile_' . $copy_dest . '_profile_copy_source', FALSE);
+    if (!empty($copy_source)) {
+      $info = array(
+        'commerce_customer_profile',
+        $copy_source, $form['commerce_customer_' . $copy_dest]['#language'],
+      );
+      // Copy the form_state input values from the source to the destination.
+      commerce_admin_order_advanced_profile_copy($info, $form_state['input']['commerce_customer_' . $copy_dest], $form_state['input']['commerce_customer_' . $copy_source], $form_state);
+      // Copy the form_state submitted values from the source to the
+      // destination.
+      commerce_admin_order_advanced_profile_copy($info, $form_state['values']['commerce_customer_' . $copy_dest], $form_state['values']['commerce_customer_' . $copy_source], $form_state);
+    }
+  }
+}
+
+/**
+ * Ajax callback refreshing the customer profile fields after a profile copy.
+ */
+function commerce_admin_order_advanced_profile_refresh($form, &$form_state) {
+  $triggering_element = $form_state['triggering_element'];
+
+  // Load the destination.
+  $copy_dest = $triggering_element['#options'][1];
+  return $form['commerce_customer_' . $copy_dest];
+}
+
+/**
+ * Creates the form for searching customers by name or email address.
+ */
+function commerce_admin_order_advanced_search_customers_form($form, &$form_state) {
+  $form = array(
+    '#prefix' => '<div id="commerce-admin-order-advanced-order-user">',
+    '#suffix' => '</div>',
+    '#attached' => array(
+      'js' => array(drupal_get_path('module', 'commerce_admin_order_advanced') . '/commerce_admin_order_advanced.js'),
+      'css' => array( drupal_get_path('module', 'commerce_admin_order_advanced') . '/commerce_admin_order_advanced.css'),
+    ),
+  );
+
+  $form['search'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Recherche de comptes clients existants'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+  );
+
+  $form['search']['customer_email'] = array(
+    '#type' => 'textfield',
+    '#description' => t('Rechercher le compte client par son addresse mail.'),
+    '#title' => t('Rechercher le compte client par son addresse mail'),
+    '#autocomplete_path' => 'user/email/autocomplete',
+    '#ajax' => array(
+      'callback' => 'commerce_admin_order_advanced_select_customer',
+      'wrapper' => 'commerce-admin-order-advanced-order-user',
+    ),
+  );
+
+  $form['search']['customer_profile'] = array(
+    '#type' => 'textfield',
+    '#description' => t('Rechercher le compte client par son nom d\'utilisateur (qui est différent du nom de famille).'),
+    '#title' => t('Rechercher le compte client par son nom d\'utilisateur'),
+    '#autocomplete_path' => 'user/addressfield/autocomplete',
+    '#ajax' => array(
+      'callback' => 'commerce_admin_order_advanced_select_customer',
+      'wrapper' => 'commerce-admin-order-advanced-order-user',
+    ),
+  );
+
+  $form['customer'] = array(
+    '#type' => 'container',
+  );
+
+    $form['new_customer'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Créer un nouveau compte client'),
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+    );
+    /**
+     * MODIF Pierre NOEL
+     */
+    $form['new_customer']['username'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Nom d\'utilisateur'),
+    );
+    $form['new_customer']['password'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Mot de passe'),
+    );
+      $form['new_customer']['email'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Adresse Mail'),
+      );
+    $form['new_customer']['prenom'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Prénom'),
+    );
+    $form['new_customer']['nom'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Nom de Famille'),
+    );
+
+    $form['new_customer']['telephone'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Téléphone'),
+    );
+    $form['new_customer']['praticien'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Référence Praticien'),
+    );
+    $form['new_customer']['societe'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Société'),
+    );
+
+    /**
+     * Fonction user role du fichier user.module. ligne 2925
+     * https://api.drupal.org/api/drupal/modules%21user%21user.module/function/user_roles/7.x
+     */
+    $form['new_customer']['role'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Catégorie d\'utilisateur'),
+        '#options' => user_roles($membersonly = TRUE, $permission = NULL),
+        '#default_value' => array(2),
+
+    );
+
+
+
+    /**
+     * Fin des Modifs
+     */
+
+  $form['actions'] = array(
+    '#type' => 'container',
+  );
+
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Create Order'),
+    '#suffix' => l(t('Reset'), 'admin/commerce/orders/add'),
+  );
+
+  return $form;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Alters the admin create order from to add billing and shipping profile
+ * fields whenever a customer is loaded by email or name.
+ */
+function commerce_admin_order_advanced_form_commerce_admin_order_advanced_search_customers_form_alter(&$form, &$form_state) {
+  // Specify the parent form elements that we should react to.
+  $parents = array(
+    'customer_email',
+    'customer_profile',
+  );
+
+  // If the triggering element was one of the customer search fields.
+  if (!empty($form_state['triggering_element']['#parents'][0]) &&
+    in_array($form_state['triggering_element']['#parents'][0], $parents) &&
+    !empty($form_state['triggering_element']['#value'])) {
+
+    $uid = NULL;
+
+    // The UID will be submitted as [uid] or [uid]-[profile_id].
+    if (is_numeric($form_state['triggering_element']['#value'])) {
+      $uid = $form_state['triggering_element']['#value'];
+    }
+    else {
+      preg_match('/([\d]+)\-([\d]+)/', $form_state['triggering_element']['#value'], $key);
+      if (!empty($key[1])) {
+        $uid = $key[1];
+      }
+    }
+
+    // Do not continue if we weren't able to find a selected user id.
+    if (!is_numeric($uid)) {
+      return;
+    }
+
+    $user = user_load((int) $uid);
+
+    // If we're able to load a user, add the form fields for selecting their
+    // billing and shipping profiles.
+    if (!empty($user)) {
+      // Hide "Create new customer"
+      $form['new_customer']['#access'] = FALSE;
+
+      $form_state['user'] = $user;
+      $form['search']['#collapsed'] = TRUE;
+      $uid = $user->uid;
+      $customer_info = array(
+        'Username: ' . $user->name,
+        'Email Address: ' . $user->mail,
+        'Member Since: ' . format_date($user->created),
+      );
+
+      $form['customer']['customer_info'] = array(
+        '#markup' => '<h3>' . t('Selected Customer') . '</h3>' . implode($customer_info, '<br />'),
+      );
+
+      $form['customer']['billing_profile'] = array(
+        '#type' => 'select',
+        '#title' => t('Billing Profile'),
+        '#options' => _commerce_admin_order_advanced_load_profiles($uid, 'billing'),
+        '#default_value' => !empty($form_state['values']['billing_profile']) ? $form_state['values']['billing_profile'] : 0,
+      );
+
+      if (module_exists('commerce_shipping')) {
+        $form['customer']['shipping_profile'] = array(
+          '#type' => 'select',
+          '#title' => t('Shipping Profile'),
+          '#options' => _commerce_admin_order_advanced_load_profiles($uid, 'shipping'),
+          '#default_value' => !empty($form_state['values']['shipping_profile']) ? $form_state['values']['shipping_profile'] : 0,
+        );
+      }
+
+      $form['customer']['email']['#access'] = FALSE;
+    }
+    else {
+      $form_state['user'] = NULL;
+      $form_state['values']['shipping_profile'] = NULL;
+      $form_state['values']['billing_profile'] = NULL;
+    }
+  }
+}
+
+/**
+ * Validates the create order form to prevent duplicate customers.
+ */
+function commerce_admin_order_advanced_search_customers_form_validate(&$form, &$form_state) {
+  if (empty($form_state['user'])) {
+      /**
+       * TODO
+       * Inversion de priorité entre le champ mail et username.
+       */
+
+      if (empty($form_state['values']['username'])) {
+          form_set_error('username', t('Please enter an username for the new customer'));
+      } //Modif par PN
+      else {
+          /**
+           * Début Modifications Pierre NOEL
+           */
+          $username = $form_state['values']['username'];
+          if (strlen($username) < 5) {
+              form_set_error('username', t('Please enter a username longer than 5 characters for the new customer.'));
+          }
+          $user = entity_load('user', array(), array('name' => $username));
+          if (!empty($user)) {
+              $use_existing = l(t('Use the existing user'), 'admin/commerce/orders/add/use-existing/nojs/' . reset($user)->uid, array('attributes' => array('class' => array('use-ajax'))));
+              form_set_error('username', t('A user with the username @username already exists. !use_existing', array('@username' => $username, '!use_existing' => $use_existing)));
+          }
+
+          if (!empty($form_state['values']['email'])) {
+              $email = $form_state['values']['email'];
+              if (!valid_email_address($email)) {
+                  form_set_error('email', t('Please enter a valid email address for the new customer.'));
+              }
+              else {
+                  $user = entity_load('user', array(), array('mail' => $email));
+                  if (!empty($user)) {
+                      $use_existing = l(t('Use the existing user'), 'admin/commerce/orders/add/use-existing/nojs/' . reset($user)->uid, array('attributes' => array('class' => array('use-ajax'))));
+                      form_set_error('email', t('A user with the email address @email already exists. !use_existing', array('@email' => $email, '!use_existing' => $use_existing)));
+                  }
+              }
+          }
+          /**
+           * Fin des modifications Pierre NOEL
+           */
+      }
+  }
+}
+
+/**
+ * Ajax callback to load an existing user by existing users email.
+ */
+function commerce_admin_order_advanced_use_existing_user($js, $uid) {
+  if (!empty($js)) {
+    $commands = array();
+    // Invoke the ajax command that replaces the customer_email value and
+    // triggers a change event to load the user.
+    $commands[] = ajax_command_invoke(NULL, 'commerceAdminOrderUseExisting', array($uid));
+    ajax_deliver(array('#type' => 'ajax', '#commands' => $commands));
+  }
+  else {
+    return;
+  }
+}
+
+/**
+ * Submit handler for creating a new commerce order.
+ */
+function commerce_admin_order_advanced_search_customers_form_submit(&$form, &$form_state) {
+  $uid = 0;
+  if (!empty($form_state['user'])) {
+    $user = $form_state['user'];
+    $uid = $user->uid;
+  }
+  // Creation du nouvel utilisateur.
+  // Début modifs PN
+  elseif (!empty($form_state['values']['username'])) {
+
+      // Since usernames are considered public information in Drupal, we must
+      // not leak e-mail adresses through usernames.
+      // See commerce_order_get_properties().
+
+      $username = $form_state['values']['username'];
+      $username = substr($username, 0, USERNAME_MAX_LENGTH);
+      $username = commerce_order_unique_username($username);
+
+      // Create a new user entity from the submitted email.
+      $user = entity_create('user', array());
+      $user->name = $username;
+      $user->mail = $form_state['values']['email'];
+      $user->status = 1;
+
+      /**
+       * TODO
+       * Validation des nouveaux champs
+       */
+      $user->roles = array_filter($form_state['values']['role']); // Changer par PN
+      if(!empty($form_state['values']['prenom'])) {
+          $user->field_prenom[LANGUAGE_NONE][0]['value'] = $form_state['values']['prenom'];
+      }
+      if(!empty($form_state['values']['nom'])) {
+          $user->field_nom[LANGUAGE_NONE][0]['value'] = $form_state['values']['nom'];
+      }
+      if(!empty($form_state['values']['telephone'])) {
+          $user->field_tel[LANGUAGE_NONE][0]['value'] = $form_state['values']['telephone'];
+      }
+      if(!empty($form_state['values']['praticien'])) {
+          $user->field_code_ambassadeur[LANGUAGE_NONE][0]['value'] = $form_state['values']['praticien'];
+      }
+      if(!empty($form_state['values']['societe'])) {
+          $user->field_societe[LANGUAGE_NONE][0]['value'] = $form_state['values']['societe'];
+      }
+      if(empty($form_state['values']['password'])) {
+          $user->pass = user_password(variable_get('commerce_password_length', 8));
+
+      }
+      elseif(!empty($form_state['values']['password'])) {
+          $user->pass = $form_state['values']['password'];
+      }
+
+      // Fin des modifs PN
+      user_save($user);
+      $uid = $user->uid;
+  } // Fin de la creation du nouvel utilisation
+
+  // Initialize a new commerce order object.
+    //$order_state  = commerce_order_state_load('cart');
+    //$status = $order_state['default_status'];
+  $order = commerce_order_new($uid); // Modifier par PN pour nouveau status
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+  // Set the shipping profile.
+  if (!empty($form_state['values']['shipping_profile'])) {
+    $order_wrapper->commerce_customer_shipping->set($form_state['values']['shipping_profile']);
+  }
+
+  // Set the billing profile.
+  if (!empty($form_state['values']['billing_profile'])) {
+    $order_wrapper->commerce_customer_billing->set($form_state['values']['billing_profile']);
+  }
+
+  commerce_order_save($order);
+
+  // Redirect the user to the admin order edit form.
+  $form_state['redirect'] = 'admin/commerce/orders/' . $order->order_id . '/edit';
+}
+
+/**
+ * Ajax callback for reloading our custom order create form.
+ */
+function commerce_admin_order_advanced_select_customer(&$form, &$form_state) {
+  return $form;
+}
+
+/**
+ * Provides a method to copy customer profiles.
+ *
+ * Helper function to copy a customer profile from one type to another through
+ * the admin order form.
+ */
+function commerce_admin_order_advanced_profile_copy($info, &$target, $source, &$form_state) {
+  list($entity_type, $bundle, $language) = $info;
+
+  // Loop over all the field instances that could be attached to this entity.
+  foreach (field_info_instances($entity_type, $bundle) as $field_name => $instance) {
+    $field = NULL;
+
+    $field = $source[$language]['profiles'][0][$field_name];
+
+    // Loop over the source field value and copy its items to the target.
+    if (is_array($field)) {
+      foreach ($field as $langcode => $items) {
+        if (is_array($items)) {
+          foreach ($items as $delta => $item) {
+            $target[$language]['profiles'][0][$field_name][$langcode][$delta] = $item;
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Internal function to return email autocomplete.
+ */
+function _commerce_admin_order_advanced_email_autocomplete($email = '') {
+  $users = db_select('users', 'u')
+      ->condition('u.mail', '%' . $email . '%', 'LIKE')
+      ->fields('u', array('mail', 'name', 'uid'))
+      ->range(0, 50)
+      ->execute()
+      ->fetchAll();
+  $emails = array();
+  foreach ($users as $user) {
+    $emails[$user->uid] = $user->mail;
+  }
+  return drupal_json_output($emails);
+}
+
+/**
+ * Helper function to load customer profiles for autocomplete.
+ */
+function commerce_admin_order_advanced_profile_autocomplete($name = '') {
+  $customers = array();
+  if (strlen($name) < 3) {
+    return drupal_json_output($customers);
+  }
+  $query = db_select('field_data_commerce_customer_address', 'ca');
+  $query->join('commerce_customer_profile', 'cp', 'ca.entity_id = cp.profile_id');
+  $query->fields('ca');
+  $query->addField('cp', 'uid', 'uid');
+  $db_or = db_or()
+    ->condition('ca.commerce_customer_address_name_line', '%' . $name . '%', 'LIKE')
+    ->condition('ca.commerce_customer_address_last_name', '%' . $name . '%', 'LIKE')
+    ->condition('ca.commerce_customer_address_first_name', '%' . $name . '%', 'LIKE')
+    ->condition('ca.commerce_customer_address_organisation_name', '%' . $name . '%', 'LIKE');
+  $query->condition($db_or);
+  $query->condition('cp.uid', '0', '<>');
+  $result = $query->execute()->fetchAllAssoc('uid');
+
+  if (!empty($result)) {
+    foreach ($result as $uid => $profile) {
+      $customer_key = $uid . '-' . $profile->entity_id;
+      $customer_name = array(
+        check_plain($profile->commerce_customer_address_name_line),
+        check_plain($profile->commerce_customer_address_first_name),
+        check_plain($profile->commerce_customer_address_last_name),
+      );
+      $customers[$customer_key] = '<strong> ' . trim(implode(' ', $customer_name)) . '</strong>';
+      $customers[$customer_key] .= '<br />';
+      $customers[$customer_key] .= check_plain($profile->commerce_customer_address_thoroughfare);
+      $customers[$customer_key] .= ' ' . check_plain($profile->commerce_customer_address_locality);
+      $customers[$customer_key] .= ', ' . check_plain($profile->commerce_customer_address_administrative_area);
+    }
+  }
+  return drupal_json_output($customers);
+}
+
+/**
+ * Helper function to load the customers profiles.
+ */
+function _commerce_admin_order_advanced_load_profiles($uid, $type = 'biling') {
+  $customer_profiles = array(0 => t('New Profile'));
+  $profiles = commerce_customer_profile_load_multiple(array(), array('uid' => $uid, 'type' => $type));
+  if (!empty($profiles)) {
+    foreach ($profiles as $profile) {
+      $profile_wrapper = entity_metadata_wrapper('commerce_customer_profile', $profile);
+      $customer_profile = $profile_wrapper->commerce_customer_address->value();
+      $customer_profiles[$profile->profile_id] = $customer_profile['thoroughfare'] . ' ' . $customer_profile['locality'] . ', ' . $customer_profile['administrative_area'];
+    }
+  }
+  return $customer_profiles;
+}
